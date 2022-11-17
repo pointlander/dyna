@@ -201,13 +201,32 @@ func process(fluke bool, title, log string, output *os.File) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println((meter.Init[0].Units & 0x60) >> 5)
+	units, offset1, offset2 := (meter.Init[0].Units&0x60)>>5, 0.0, 0.0
+	fmt.Println(units)
+	switch units {
+	case 0, 2:
+		offset1 = ((float64(meter.Init[0].CalibrationOffset1) / (10 * 1.5)) * (9 / 5.0))
+		offset2 = ((float64(meter.Init[0].CalibrationOffset2) / (10 * 1.5)) * (9 / 5.0))
+	case 1:
+		offset1 = (float64(meter.Init[0].CalibrationOffset1) / (10 * 1.5))
+		offset2 = (float64(meter.Init[0].CalibrationOffset2) / (10 * 1.5))
+	}
+	convert := func(value uint64) float64 {
+		switch units {
+		case 0:
+			return ((float64(value) / (10 * 1.5)) * (5 / 9.0)) - 273.1
+		case 1:
+			return (float64(value) / (10 * 1.5)) - 459.67
+		case 2:
+			return ((float64(value) / (10 * 1.5)) * (5 / 9.0))
+		}
+		return 0
+	}
 	sum, count := 0.0, 0
 	points1, points2 := make(plotter.XYs, 0, 8), make(plotter.XYs, 0, 8)
 	for _, data := range meter.Data {
-		fmt.Println(data.Temperature1, data.Temperature2)
-		t1 := ((float64(data.Temperature1) / (10 * 1.5)) * (5 / 9.0)) - 273.1
-		t2 := ((float64(data.Temperature2) / (10 * 1.5)) * (5 / 9.0)) - 273.1
+		t1 := convert(data.Temperature1) + offset1
+		t2 := convert(data.Temperature2) + offset2
 		fmt.Println(log, t1, t2)
 		sum += math.Abs(t1 - t2)
 		points1 = append(points1, plotter.XY{X: float64(count), Y: float64(t1)})
