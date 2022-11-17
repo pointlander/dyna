@@ -7,6 +7,7 @@ package main
 import (
 	"bufio"
 	"encoding/csv"
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"image/color/palette"
@@ -45,6 +46,28 @@ var (
 	// FlagRead read from the meter
 	FlagRead = flag.String("read", "", "read from the meter")
 )
+
+// PacketInit is an init packet
+type PacketInit struct {
+	CalibrationOffset2 uint64
+	CalibrationOffset1 uint64
+	Interval           uint64
+	ThermocoupleType   uint64
+	Units              uint64
+}
+
+// PacketData is a data packet
+type PacketData struct {
+	Temperature2 uint64
+	Temperature1 uint64
+	Time         uint64
+}
+
+// Meter is a meter
+type Meter struct {
+	Data []PacketData
+	Init []PacketInit
+}
 
 func main() {
 	flag.Parse()
@@ -98,6 +121,7 @@ func main() {
 		writer.WriteString("QD 1\r\n")
 		writer.Flush()
 		buffer, i := make([]byte, 8), 0
+		meter := Meter{}
 		for uint64(i) < count {
 			fmt.Println("reading", i, "of", count)
 			_, err := io.ReadFull(reader, buffer)
@@ -105,9 +129,33 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println(buffer[7] & (1 << 7))
+			if buffer[7]>>7 == 0 {
+				data := PacketData{}
+				data.Temperature1 = uint64(buffer[0]) | (uint64(buffer[1]) << 8)
+				data.Temperature2 = uint64(buffer[2]) | (uint64(buffer[3]) << 8)
+				data.Time = uint64(buffer[4]) | (uint64(buffer[5]) << 8) | (uint64(buffer[6]) << 16) | (uint64(buffer[7]&0x7F) << 24)
+				meter.Data = append(meter.Data, data)
+			} else {
+				init := PacketInit{}
+				init.CalibrationOffset2 = uint64(buffer[0]) | (uint64(buffer[1]) << 8)
+				init.CalibrationOffset1 = uint64(buffer[2]) | (uint64(buffer[3]) << 8)
+				init.Interval = uint64(buffer[4]) | (uint64(buffer[5]) << 8)
+				init.ThermocoupleType = uint64(buffer[6])
+				init.Units = uint64(buffer[7] & 0x7F)
+				meter.Init = append(meter.Init, init)
+			}
 			tm.Sleep(100 * tm.Millisecond)
 			i++
+		}
+		output, err := os.Create("meter.bin")
+		if err != nil {
+			panic(err)
+		}
+		defer output.Close()
+		encoder := gob.NewEncoder(output)
+		err = encoder.Encode(meter)
+		if err != nil {
+			panic(err)
 		}
 		return
 	}
