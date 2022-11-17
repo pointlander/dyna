@@ -6,7 +6,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/csv"
 	"encoding/gob"
 	"flag"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"strconv"
 	"strings"
 	tm "time"
 
@@ -107,7 +105,6 @@ func main() {
 		count := uint64(0)
 		count |= uint64(buffer[0])
 		count |= uint64(buffer[1]) << 8
-		count++
 		fmt.Println("count", count)
 		time := uint64(0)
 		time = uint64(buffer[2])
@@ -120,6 +117,25 @@ func main() {
 
 		writer.WriteString("QD 1\r\n")
 		writer.Flush()
+
+		buffer = make([]byte, 5)
+		_, err = io.ReadFull(reader, buffer)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(buffer)
+		if buffer[0] != '0' || buffer[1] != '\r' || buffer[2] != 'Q' || buffer[3] != 'D' || buffer[4] != ',' {
+			panic("invalid response")
+		}
+
+		for j := 0; j < 2; j++ {
+			a, err := reader.ReadByte()
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println("extra", a)
+		}
+
 		buffer, i := make([]byte, 8), 0
 		meter := Meter{}
 		for uint64(i) < count {
@@ -131,8 +147,8 @@ func main() {
 			}
 			if buffer[7]>>7 == 0 {
 				data := PacketData{}
-				data.Temperature1 = uint64(buffer[0]) | (uint64(buffer[1]) << 8)
-				data.Temperature2 = uint64(buffer[2]) | (uint64(buffer[3]) << 8)
+				data.Temperature2 = uint64(buffer[0]) | (uint64(buffer[1]) << 8)
+				data.Temperature1 = uint64(buffer[2]) | (uint64(buffer[3]) << 8)
 				data.Time = uint64(buffer[4]) | (uint64(buffer[5]) << 8) | (uint64(buffer[6]) << 16) | (uint64(buffer[7]&0x7F) << 24)
 				meter.Data = append(meter.Data, data)
 			} else {
@@ -168,7 +184,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	process(true, "Pyrolytic graphite experiment 1", "log1.csv", output)
+	process(true, "Pyrolytic graphite experiment 1", "meter1.bin", output)
 }
 
 func process(fluke bool, title, log string, output *os.File) {
@@ -178,38 +194,24 @@ func process(fluke bool, title, log string, output *os.File) {
 		panic(err)
 	}
 	defer input.Close()
-	decoder := csv.NewReader(input)
-	decoder.FieldsPerRecord = -1
-	record, err := decoder.Read()
+	decoder := gob.NewDecoder(input)
+	meter := Meter{}
+	err = decoder.Decode(&meter)
 	if err != nil {
 		panic(err)
 	}
-	t1i, t2i := 1, 2
-	if fluke {
-		t2i = 3
-		for record[0] != "Reading" {
-			record, _ = decoder.Read()
-		}
-	}
-	fmt.Println(log, record)
+	fmt.Println((meter.Init[0].Units & 0x60) >> 5)
 	sum, count := 0.0, 0
 	points1, points2 := make(plotter.XYs, 0, 8), make(plotter.XYs, 0, 8)
-	record, err = decoder.Read()
-	for err == nil {
-		t1, err1 := strconv.ParseFloat(strings.TrimSpace(record[t1i]), 64)
-		if err1 != nil {
-			panic(err1)
-		}
-		t2, err1 := strconv.ParseFloat(strings.TrimSpace(record[t2i]), 64)
-		if err1 != nil {
-			panic(err1)
-		}
+	for _, data := range meter.Data {
+		fmt.Println(data.Temperature1, data.Temperature2)
+		t1 := ((float64(data.Temperature1) / (10 * 1.5)) * (5 / 9.0)) - 273.1
+		t2 := ((float64(data.Temperature2) / (10 * 1.5)) * (5 / 9.0)) - 273.1
 		fmt.Println(log, t1, t2)
 		sum += math.Abs(t1 - t2)
 		points1 = append(points1, plotter.XY{X: float64(count), Y: float64(t1)})
 		points2 = append(points2, plotter.XY{X: float64(count), Y: float64(t2)})
 		count++
-		record, err = decoder.Read()
 	}
 	fmt.Println("average=", sum/float64(count))
 	fmt.Fprintf(output, "* average=%f\n", sum/float64(count))
