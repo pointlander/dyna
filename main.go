@@ -71,6 +71,7 @@ func main() {
 	flag.Parse()
 
 	if *FlagRead != "" {
+		// https://www.eevblog.com/forum/testgear/fluke-5x-ii-series-thermometer-tear-down-and-hacks/
 		mode := &serial.Mode{
 			BaudRate: 9600,
 			Parity:   serial.NoParity,
