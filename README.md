@@ -18,3 +18,9 @@ Didn't work a well because the pyrolytic graphite was damaged, but this image pr
 
 ![meter1.bin](meter1.png?raw=true)
 
+### Pyrolytic graphite indoor experiment 2 - meter2.bin
+* average=0.395012
+* corr=0.599549
+
+![meter2.bin](meter2.png?raw=true)
+
