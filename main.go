@@ -187,6 +187,7 @@ func main() {
 	}
 	process(true, "Pyrolytic graphite experiment 1", "meter1.bin", output)
 	process(true, "Pyrolytic graphite indoor experiment 2", "meter2.bin", output)
+	process(true, "Pyrolytic graphite indoor daytime experiment 3", "meter3.bin", output)
 }
 
 func process(fluke bool, title, log string, output *os.File) {
